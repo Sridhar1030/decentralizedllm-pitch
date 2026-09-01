@@ -2,13 +2,10 @@
 
 **Status: design and planning.** This repository holds the architecture we intend to build, the research
 behind it, and the analysis that shaped it. None of the system described here has been built yet. Where a
-number appears, it comes either from the model's own configuration or from measuring a baseline we studied,
-and the improvements are projections rather than results.
+number appears, it comes from the model's own configuration or from measuring the model directly, and
+anything about how the finished system will perform is a projection rather than a result.
 
 ![The architecture we are planning](knowledge-base/assets/pipeline.svg)
-
-*The top lane is the naive design, where a coordinator relays every hop. The bottom lane is what we are
-planning instead, with devices handing off directly to each other.*
 
 ---
 
@@ -49,27 +46,23 @@ All thirteen records are in [`decisions/`](knowledge-base/decisions/), including
 [claims ledger](knowledge-base/decisions/ADR-013-published-claims-ledger.md) that tracks which figures we
 consider defensible and which we have retired.
 
-## What the analysis turned up
+## Why the design looks like this
 
-We studied a naive baseline and the model itself before designing anything. Five things came out of it,
-all reproducible with `python3 knowledge-base/bench/verify_constants.py`. Full detail in
-[`01-VERIFIED-FACTS.md`](knowledge-base/01-VERIFIED-FACTS.md).
+Four decisions came out of measuring the model before we designed anything. Each one is the answer to a
+specific cost, and each is reproducible with `python3 knowledge-base/bench/verify_constants.py`. Full
+detail in [`01-VERIFIED-FACTS.md`](knowledge-base/01-VERIFIED-FACTS.md).
 
-1. **An even split is not even.** The output head is 136M parameters, which works out to 9.13 transformer
-   layers' worth of compute. So an 8/8/8 split really runs 8/8/17, and a pipeline moves at the speed of its
-   slowest stage. Splitting by layer count alone would cost 1.539x for nothing, which is why placement needs
-   to be cost aware.
-2. **The biggest thing on the wire would be the logits, not the activation.** If sampling happens on the
-   coordinator, the last device has to ship back a 607,744 byte vector every token. Sampling one hop earlier
-   turns that into a 4 byte token id.
-3. **Without a KV cache the recompute is brutal.** A 512 token reply would redo 147,200 position forwards
-   per device instead of 543. Grouped query attention makes the cache cheap enough that there is no reason
-   to skip it, at 12 KB per token for the whole model.
-4. **The wire traffic can come down by roughly 935x** for one 512 token generation, and we treat that as a
-   conservative figure. See the next point.
-5. **A coordinator that relays every hop costs double.** Three POSTs means six wire crossings per token,
-   with the activation crossing four times instead of two. This is why the design has devices hand off
-   directly, and it is the difference between the two lanes in the diagram above.
+1. **Placement is cost aware, not layer counting.** The output head is 136M parameters, which is 9.13
+   transformer layers' worth of compute on every token. Cutting 24 layers evenly across three devices would
+   really run 8/8/17, and a pipeline moves at the speed of its slowest stage. Cutting by cost gives
+   11/11/11 layer-equivalents instead, and it is the same three lines of configuration either way.
+2. **Sampling happens on the last device, not the coordinator.** The logit vector is 607,744 bytes. Choosing
+   the token where the logits are produced means 4 bytes travel back per token rather than 607,744.
+3. **Every device caches its own keys and values.** Without that, each new token redoes the entire sequence:
+   147,200 position forwards per device across a 512 token reply, against 543. Grouped query attention keeps
+   the cache at 12 KB per token for the whole model, so there is no memory argument for skipping it.
+4. **Devices hand off directly to each other.** Relaying every hop through a coordinator would double the
+   traffic, four activation crossings per token instead of two.
 
 ## Ideas we tested and dropped
 
@@ -77,7 +70,7 @@ Both of these looked good on paper. We ran them against the real model, they did
 rather record that than quietly leave them in the design.
 
 - **Aggressive quantisation.** Per tensor int8 destroys the model: cosine similarity 0.039, perplexity
-  411,041 against a baseline of 18.6. The cause is measurable, one channel out of 896 carries 972x the
+  411,041 against 18.6 for the unquantised reference. The cause is measurable, one channel out of 896 carries 972x the
   median magnitude. The plan stops at bf16.
 - **Compressing the activation.** Rank 224 of 896 reproduces every next token choice exactly, but the
   projection costs 27.31 µs to save 11 µs of network time. It only starts paying below 394 Mbit/s, so it
@@ -105,7 +98,7 @@ hidden states.
 
 | | |
 |---|---|
-| [`01-VERIFIED-FACTS.md`](knowledge-base/01-VERIFIED-FACTS.md) | the five findings, with the script that regenerates them |
+| [`01-VERIFIED-FACTS.md`](knowledge-base/01-VERIFIED-FACTS.md) | the measured facts, with the script that regenerates them |
 | [`10-ARCHITECTURE.md`](knowledge-base/10-ARCHITECTURE.md) | the target design, component by component |
 | [`20-INFRA-AND-STACK.md`](knowledge-base/20-INFRA-AND-STACK.md) | serving runtimes surveyed, and what we would build on |
 | [`30-PERF-MODEL.md`](knowledge-base/30-PERF-MODEL.md) | the latency model and where the projections come from |
@@ -122,7 +115,7 @@ had to correct in our own work, including the numbers we retired outright.
 ## Reproduce the analysis
 
 ```bash
-python3 knowledge-base/bench/verify_constants.py     # the five findings, from the model config
+python3 knowledge-base/bench/verify_constants.py     # the numbers above, from the model config
 python3 knowledge-base/assets/build_deck.py          # rebuild the slides
 ```
 

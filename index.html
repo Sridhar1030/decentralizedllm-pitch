@@ -102,7 +102,7 @@ footer a{color:var(--ink-3)}
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">Decentralised inference</p>
+  <p class="eyebrow">Decentralised inference &middot; design in progress</p>
   <h1>One model, split across the devices you already own.</h1>
   <p class="lede">Open source models are really good now, but running one yourself is still expensive.
   You either buy a serious GPU, or you rent a cluster and send your prompts off to someone else's servers.</p>
@@ -113,21 +113,21 @@ footer a{color:var(--ink-3)}
 
 <section>
   <figure>
-    <img src="knowledge-base/assets/pipeline.svg" alt="Animated diagram: v0 relays every hop through the coordinator, v1 hands off node to node">
-    <figcaption>The top lane is what the prototype does today. It bounces because every hop goes back
-    through the coordinator. The bottom lane is where we are taking it, handing off directly from one
-    device to the next.</figcaption>
+    <img src="knowledge-base/assets/pipeline.svg" alt="Animated diagram of the planned architecture: a coordinator, three devices each holding a range of layers, and a token flowing through them">
+    <figcaption>The architecture we are planning. Each device holds a contiguous range of layers and
+    hands off directly to the next, so the same 1,792 bytes cross the wire on every token regardless of
+    how long the conversation gets.</figcaption>
   </figure>
 </section>
 
 <section>
   <h2>How it works</h2>
-  <p>DecentralizedLLM takes one model and spreads it across whatever devices you already have. A phone,
+  <p>DecentralizedLLM would take one model and spread it across whatever devices you already have. A phone,
   a laptop, an old desktop with a decent GPU, a spare box in the corner. Each device holds a few layers
-  of the model instead of the whole thing. Your prompt goes to the first device, the partial result gets
+  of the model instead of the whole thing. A prompt goes to the first device, the partial result gets
   passed to the next over wifi or a VPN, and the last one sends back the answer.
-  <b>No single device ever holds the full model.</b></p>
-  <p>The devices don't have to match. A shard is just a range of layers, so the machine with the GPU can
+  <b>No single device would ever hold the full model.</b></p>
+  <p>The devices would not have to match. A shard is just a range of layers, so the machine with the GPU can
   take more of them and the phone can take fewer. You are pooling whatever the group happens to own.</p>
 
   <div class="tablewrap">
@@ -143,27 +143,23 @@ footer a{color:var(--ink-3)}
 </section>
 
 <section>
-  <h2>What we found when we measured it</h2>
-  <p>We took the existing prototype apart and checked every number against the real model config and the
-  real source. Five things came out of it, all reproducible with
-  <code>bench/verify_constants.py</code>.</p>
+  <h2>Why the design looks like this</h2>
+  <p>Four decisions came out of measuring the model before we designed anything. Each one is the answer to
+  a specific cost, and each is reproducible with <code>bench/verify_constants.py</code>.</p>
 
   <ol class="findings">
-    <li><p><b>The even split is not even.</b> The output head is 136M parameters, which is 9.13 transformer
-      layers' worth of compute. So an 8/8/8 split really runs 8/8/17, and the pipeline moves at the speed of
-      its slowest stage. That costs 1.539x, and the fix is three environment variables.</p></li>
-    <li><p><b>The biggest thing on the wire is the logits, not the activation.</b> The last node ships back a
-      607,744 byte vector every token, because the sampling happens on the coordinator. Move the sampling one
-      hop earlier and it becomes a 4 byte token id.</p></li>
-    <li><p><b>There is no KV cache</b>, so a 512 token reply recomputes the whole sequence every step:
-      147,200 position forwards per node instead of 543. Grouped query attention makes the cache almost free,
-      at 12 KB per token for the entire model.</p></li>
-    <li><p><b>935x fewer bytes on the wire</b> for one 512 token generation, and that figure is deliberately
-      conservative. See the next one.</p></li>
-    <li><p><b>The prototype does not chain.</b> The node service has no outbound HTTP client at all, so the
-      coordinator relays every hop: three POSTs, six wire crossings per token. Our own diagram described a
-      system the code did not implement. We found it, and it is why chain routing is real work rather than
-      something we can assume.</p></li>
+    <li><p><b>Placement is cost aware, not layer counting.</b> The output head is 136M parameters, which is
+      9.13 transformer layers' worth of compute on every token. Cutting 24 layers evenly across three
+      devices would really run 8/8/17, and a pipeline moves at the speed of its slowest stage. Cutting by
+      cost gives 11/11/11 instead, and it is the same three lines of configuration either way.</p></li>
+    <li><p><b>Sampling happens on the last device.</b> The logit vector is 607,744 bytes. Choosing the token
+      where the logits are produced means 4 bytes travel back per token rather than 607,744.</p></li>
+    <li><p><b>Every device caches its own keys and values.</b> Without that, each new token redoes the whole
+      sequence: 147,200 position forwards per device across a 512 token reply, against 543. Grouped query
+      attention keeps the cache at 12 KB per token for the entire model, so there is no memory argument for
+      skipping it.</p></li>
+    <li><p><b>Devices hand off directly to each other.</b> Relaying every hop through a coordinator would
+      double the traffic, four activation crossings per token instead of two.</p></li>
   </ol>
 </section>
 
@@ -199,9 +195,10 @@ footer a{color:var(--ink-3)}
       <li><b>Not a new idea.</b> Layer sharded inference goes back to SplitNN in 2018, through Petals in 2022
       and exo in 2024, and vLLM ships cross node pipeline parallelism behind one flag. What we think is
       defensible is the trust and heterogeneity model, not the mechanism.</li>
-      <li><b>Not yet measured end to end.</b> The improved numbers are modelled from measured stage times.
-      The integrated system has not been run.</li>
-      <li><b>Not on phones yet.</b> The prototype is Docker containers on CPU. Phones are the next step.</li>
+      <li><b>Not built.</b> This is a design. Figures about how the finished system will perform are
+      modelled from measured stage times, and the integrated system has not been run.</li>
+      <li><b>Not on phones yet.</b> Nothing here has been run on a handset. Phones are the goal, not the
+      starting point.</li>
     </ul>
   </div>
 </section>
