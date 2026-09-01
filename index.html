@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DecentralizedLLM</title>
+<meta name="description" content="One model split across the devices a small team already owns. No single device holds the whole model.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔀</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#eaeef4; --surface:#ffffff; --surface-2:#dfe6ef; --line:#c3cfdd;
+  --ink:#0e141c; --ink-2:#445265; --ink-3:#78879a;
+  --n0:#0d7d74; --n1:#4c4bd0; --n2:#c2306b;
+  --ok:#15803d; --bad:#be123c; --accent:#a86200;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0a0f15; --surface:#111a23; --surface-2:#17212c; --line:#26323e;
+    --ink:#e9eff6; --ink-2:#9fb0c2; --ink-3:#6a7c8f;
+    --n0:#2dd4bf; --n1:#8f8ffb; --n2:#f472a6;
+    --ok:#4ade80; --bad:#fb7185; --accent:#f0a83c;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0a0f15; --surface:#111a23; --surface-2:#17212c; --line:#26323e;
+  --ink:#e9eff6; --ink-2:#9fb0c2; --ink-3:#6a7c8f;
+  --n0:#2dd4bf; --n1:#8f8ffb; --n2:#f472a6;
+  --ok:#4ade80; --bad:#fb7185; --accent:#f0a83c;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:860px; margin:0 auto; padding:0 22px}
+h1,h2,h3{font-family:Archivo,"IBM Plex Sans",sans-serif; font-variation-settings:"wdth" 112,"wght" 700;
+  letter-spacing:-.015em; text-wrap:balance; margin:0}
+h1{font-size:clamp(34px,6vw,54px); line-height:1.04}
+h2{font-size:clamp(21px,3vw,26px); font-variation-settings:"wdth" 112,"wght" 600; margin:0 0 14px}
+h3{font-size:16px; font-variation-settings:"wdth" 112,"wght" 600; margin:0 0 6px}
+p{margin:0 0 16px; max-width:68ch}
+a{color:var(--accent)}
+code{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.88em;
+  background:var(--surface-2); padding:1px 5px; border-radius:3px}
+
+header{padding:76px 0 40px}
+.eyebrow{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 18px}
+.lede{font-size:clamp(17px,2.2vw,19px); color:var(--ink-2); margin-top:20px; max-width:60ch}
+.cta{display:flex; gap:10px; flex-wrap:wrap; margin-top:28px}
+.btn{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.05em;
+  text-transform:uppercase; text-decoration:none; padding:10px 15px; border-radius:4px;
+  border:1px solid var(--line); color:var(--ink); background:var(--surface)}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:var(--ground); font-weight:600}
+
+section{padding:34px 0; border-top:1px solid var(--line)}
+figure{margin:0 0 8px}
+figure img{width:100%; height:auto; display:block; border-radius:8px}
+figcaption{font-size:13.5px; color:var(--ink-3); margin-top:10px}
+
+.tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:6px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:520px}
+th,td{padding:10px 14px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:500}
+td.num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+
+ol.findings{counter-reset:f; list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:16px}
+ol.findings li{counter-increment:f; display:grid; grid-template-columns:30px 1fr; gap:12px}
+ol.findings li::before{content:counter(f); font-family:"IBM Plex Mono",monospace; font-size:12px;
+  color:var(--accent); border:1px solid var(--line); border-radius:4px; width:26px; height:26px;
+  display:grid; place-items:center; margin-top:2px}
+ol.findings p{margin:0; font-size:15px; color:var(--ink-2)}
+ol.findings b{color:var(--ink)}
+
+.cards{display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:15px 16px}
+.card p{font-size:14px; color:var(--ink-2); margin:0}
+.card .k{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--ink-3); display:block; margin-bottom:7px}
+
+.caveats{background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--bad);
+  border-radius:6px; padding:16px 18px}
+.caveats ul{margin:0; padding-left:19px}
+.caveats li{font-size:14.5px; color:var(--ink-2); margin-bottom:9px}
+.caveats li:last-child{margin-bottom:0}
+.caveats b{color:var(--ink)}
+
+footer{padding:34px 0 64px; border-top:1px solid var(--line); color:var(--ink-3); font-size:13.5px}
+footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Decentralised inference</p>
+  <h1>One model, split across the devices you already own.</h1>
+  <p class="lede">Open source models are really good now, but running one yourself is still expensive.
+  You either buy a serious GPU, or you rent a cluster and send your prompts off to someone else's servers.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://claude.ai/code/artifact/4d47f08f-5382-42e3-bd0b-877026b0ba3e">See it running</a>
+    <a class="btn" href="https://github.com/Sridhar1030/decentralizedllm-pitch">Repository</a>
+    <a class="btn" href="knowledge-base/assets/DecentralizedLLM-deck.pptx">Deck</a>
+  </div>
+</header>
+
+<section>
+  <figure>
+    <img src="knowledge-base/assets/pipeline.svg" alt="Animated diagram: v0 relays every hop through the coordinator, v1 hands off node to node">
+    <figcaption>The top lane is what the prototype does today. It bounces because every hop goes back
+    through the coordinator. The bottom lane is where we are taking it, handing off directly from one
+    device to the next.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>How it works</h2>
+  <p>DecentralizedLLM takes one model and spreads it across whatever devices you already have. A phone,
+  a laptop, an old desktop with a decent GPU, a spare box in the corner. Each device holds a few layers
+  of the model instead of the whole thing. Your prompt goes to the first device, the partial result gets
+  passed to the next over wifi or a VPN, and the last one sends back the answer.
+  <b>No single device ever holds the full model.</b></p>
+  <p>The devices don't have to match. A shard is just a range of layers, so the machine with the GPU can
+  take more of them and the phone can take fewer. You are pooling whatever the group happens to own.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Device</th><th>Rough shard</th><th>Worked example</th></tr></thead>
+      <tbody>
+        <tr><td>Phone</td><td class="num">under 1 GB</td><td>an 8B model in int4 is 4.0 GB, so 1.0 GB each across four phones</td></tr>
+        <tr><td>Laptop</td><td class="num">a few GB</td><td>a 70B model in int4 is 35.3 GB, so 7.1 GB each across five laptops</td></tr>
+        <tr><td>Desktop with a GPU</td><td class="num">the biggest slice</td><td>takes more layers, so it is not left idle waiting on the others</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>What we found when we measured it</h2>
+  <p>We took the existing prototype apart and checked every number against the real model config and the
+  real source. Five things came out of it, all reproducible with
+  <code>bench/verify_constants.py</code>.</p>
+
+  <ol class="findings">
+    <li><p><b>The even split is not even.</b> The output head is 136M parameters, which is 9.13 transformer
+      layers' worth of compute. So an 8/8/8 split really runs 8/8/17, and the pipeline moves at the speed of
+      its slowest stage. That costs 1.539x, and the fix is three environment variables.</p></li>
+    <li><p><b>The biggest thing on the wire is the logits, not the activation.</b> The last node ships back a
+      607,744 byte vector every token, because the sampling happens on the coordinator. Move the sampling one
+      hop earlier and it becomes a 4 byte token id.</p></li>
+    <li><p><b>There is no KV cache</b>, so a 512 token reply recomputes the whole sequence every step:
+      147,200 position forwards per node instead of 543. Grouped query attention makes the cache almost free,
+      at 12 KB per token for the entire model.</p></li>
+    <li><p><b>935x fewer bytes on the wire</b> for one 512 token generation, and that figure is deliberately
+      conservative. See the next one.</p></li>
+    <li><p><b>The prototype does not chain.</b> The node service has no outbound HTTP client at all, so the
+      coordinator relays every hop: three POSTs, six wire crossings per token. Our own diagram described a
+      system the code did not implement. We found it, and it is why chain routing is real work rather than
+      something we can assume.</p></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Two experiments that killed our own ideas</h2>
+  <p>We ran these against the real checkpoint expecting them to work. They did not, and we would rather
+  say so than quietly drop them.</p>
+  <div class="cards">
+    <div class="card">
+      <span class="k">Aggressive quantisation</span>
+      <h3>int8 per tensor destroys the model</h3>
+      <p>Cosine similarity 0.039, perplexity 411,041 against a baseline of 18.6. The cause is measurable:
+      one channel out of 896 carries 972x the median magnitude. bf16 is free and that is where we stop.</p>
+    </div>
+    <div class="card">
+      <span class="k">Compressing the activation</span>
+      <h3>Compressing costs more than sending</h3>
+      <p>Rank 224 of 896 reproduces every next token choice exactly, but the projection costs 27.31 µs to
+      save 11 µs of network time. It only starts paying below 394 Mbit/s. We built it, measured it, cut it.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What this is not</h2>
+  <div class="caveats">
+    <ul>
+      <li><b>Not cheaper than an API.</b> A fleet of idle machines burns more in electricity than the tokens
+      are worth at market prices. The argument is fit, not cost: the devices are already yours and already
+      on, and the model does not fit on any one of them.</li>
+      <li><b>Not encryption.</b> Splitting a model across machines raises the cost of recovering a prompt
+      from intermediate state. It does not prevent it.</li>
+      <li><b>Not a new idea.</b> Layer sharded inference goes back to SplitNN in 2018, through Petals in 2022
+      and exo in 2024, and vLLM ships cross node pipeline parallelism behind one flag. What we think is
+      defensible is the trust and heterogeneity model, not the mechanism.</li>
+      <li><b>Not yet measured end to end.</b> The improved numbers are modelled from measured stage times.
+      The integrated system has not been run.</li>
+      <li><b>Not on phones yet.</b> The prototype is Docker containers on CPU. Phones are the next step.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>Who is building it</h2>
+  <p>Distributed ML is what we do day to day. We run GPU workloads on Kubernetes, and we are maintainers on
+  Kubeflow and Feast, so getting separate machines to cooperate on one job is familiar territory.
+  Decentralised inference is the same problem pointed at everyday devices instead of a datacenter.</p>
+  <p>We have also deployed local LLMs on device, so the memory ceilings and the latency pain are not theory
+  for us. Open source is a big part of how we work, and between us we have been selected for GSSoC and
+  LFX Mentorship.</p>
+  <p>The part we actually care about is who this serves. Most of the world runs on mid range hardware and
+  patchy networks, and cloud LLMs quietly skip those users. Decentralised inference is one of the few
+  approaches that gets better as devices get more numerous rather than more powerful.</p>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    <p>Every figure here traces to a script or a measurement. The
+    <a href="https://github.com/Sridhar1030/decentralizedllm-pitch/blob/planning/knowledge-base/90-AUDIT.md">adversarial audit</a>
+    lists 23 findings against our own work, including the numbers we had to retire.
+    Prototype model is Qwen2.5-0.5B-Instruct.</p>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>
