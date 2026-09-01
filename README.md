@@ -1,8 +1,8 @@
 # DecentralizedLLM — pitch workspace
 
 Submission materials for **DecentralizedLLM**: one LLM split across three machines, where no machine holds
-the whole model. The working proof-of-concept lives in [`../DecentralizedLLM/`](../DecentralizedLLM/); this
-folder holds the research, the architecture decisions, the animated prototype and the deck.
+the whole model. The working proof-of-concept lives in a separate repository; this one holds the research, the architecture
+decisions, the animated prototype and the deck.
 
 ![v0 versus v1 on the wire](knowledge-base/assets/pipeline.svg)
 
