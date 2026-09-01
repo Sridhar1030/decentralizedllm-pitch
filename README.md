@@ -1,91 +1,130 @@
-# DecentralizedLLM — pitch workspace
+# DecentralizedLLM
 
-Submission materials for **DecentralizedLLM**: one LLM split across three machines, where no machine holds
-the whole model. The working proof-of-concept lives in a separate repository; this one holds the research, the architecture
-decisions, the animated prototype and the deck.
+**Status: design and planning.** This repository holds the architecture we intend to build, the research
+behind it, and the analysis that shaped it. None of the system described here has been built yet. Where a
+number appears, it comes either from the model's own configuration or from measuring a baseline we studied,
+and the improvements are projections rather than results.
 
-![v0 versus v1 on the wire](knowledge-base/assets/pipeline.svg)
+![The architecture we are planning](knowledge-base/assets/pipeline.svg)
 
-*(animated — the top lane bounces because v0 relays every hop through the coordinator; the bottom lane runs
-straight because v1 hands off node-to-node)*
-
----
-
-## Deliverables
-
-| What | Where |
-|---|---|
-| **Animated prototype** (6 scenes, autoplay + scrubber) | [claude.ai/code/artifact/4d47f08f…](https://claude.ai/code/artifact/4d47f08f-5382-42e3-bd0b-877026b0ba3e) · source: [`assets/split-model-bench.html`](knowledge-base/assets/split-model-bench.html) |
-| **Pitch deck**, 5 slides + speaker notes | [`assets/DecentralizedLLM-deck.pptx`](knowledge-base/assets/DecentralizedLLM-deck.pptx) · rebuild: `python3 knowledge-base/assets/build_deck.py` |
-| **README animation** (SMIL, plays on GitHub) | [`assets/pipeline.svg`](knowledge-base/assets/pipeline.svg) |
-| **Architecture** | [`10-ARCHITECTURE.md`](knowledge-base/10-ARCHITECTURE.md) |
-| **Infra & serving-runtime stack** | [`20-INFRA-AND-STACK.md`](knowledge-base/20-INFRA-AND-STACK.md) |
-| **Performance model** | [`30-PERF-MODEL.md`](knowledge-base/30-PERF-MODEL.md) |
-| **Pitch script, slides, form copy** | [`40-PITCH.md`](knowledge-base/40-PITCH.md) |
-| **13 architecture decision records** | [`decisions/`](knowledge-base/decisions/) |
-| **25 team research files** | [`teams/`](knowledge-base/teams/) |
-| **Adversarial numeric audit** | [`90-AUDIT.md`](knowledge-base/90-AUDIT.md) — **read before quoting any number** |
+*The top lane is the naive design, where a coordinator relays every hop. The bottom lane is what we are
+planning instead, with devices handing off directly to each other.*
 
 ---
 
-## The five verified findings
+## The idea
 
-Every figure below is exact arithmetic over the real `config.json` and the v0 source, reproducible with
-`python3 knowledge-base/bench/verify_constants.py`. Full detail in
+Open source models are really good now, but running one yourself is still expensive. You either buy a
+serious GPU, or you rent a cluster and send your prompts off to someone else's servers.
+
+We want to take one model and spread it across whatever devices a small team already has. A phone, a
+laptop, an old desktop with a decent GPU, a spare box in the corner. Each device would hold a few layers of
+the model instead of the whole thing. A prompt goes to the first device, the partial result gets passed to
+the next over wifi or a VPN, and the last one sends back the answer. No single device would ever hold the
+full model.
+
+The devices would not have to match. A shard is just a range of layers, so the machine with the GPU can
+take more of them and the phone can take fewer. You are pooling whatever the group happens to own.
+
+| Device | Rough shard | Worked example |
+|---|---|---|
+| Phone | under 1 GB | an 8B model in int4 is 4.0 GB, so 1.0 GB each across four phones |
+| Laptop | a few GB | a 70B model in int4 is 35.3 GB, so 7.1 GB each across five laptops |
+| Desktop with a GPU | the biggest slice | takes more layers, so it is not left idle waiting on the others |
+
+## What we are planning to build
+
+Six pieces, each with a decision record explaining the alternatives we considered and rejected.
+
+| Piece | What it does | Decision record |
+|---|---|---|
+| Layer shards | each device loads a contiguous range of layers and nothing else | [ADR-011](knowledge-base/decisions/ADR-011-weight-distribution-and-loader.md) |
+| KV cache per shard | stop resending the whole sequence on every token | [ADR-001](knowledge-base/decisions/ADR-001-kv-cache-stateful-shards.md) |
+| DLP, a binary wire protocol | a fixed 40 byte header on a persistent socket, replacing HTTP and JSON | [ADR-002](knowledge-base/decisions/ADR-002-dlp-binary-wire-protocol.md) |
+| Activation compression | bf16 on the wire, with a quality gate that can back off | [ADR-003](knowledge-base/decisions/ADR-003-activation-compression.md) |
+| A queue and admission control | one bounded queue, because a single request cannot fill a pipeline | [ADR-005](knowledge-base/decisions/ADR-005-queueing-admission-backpressure.md) |
+| Cost aware layer placement | pick the cut points from each device's speed, not by counting layers | [ADR-007](knowledge-base/decisions/ADR-007-layer-placement-dp.md) |
+
+All thirteen records are in [`decisions/`](knowledge-base/decisions/), including a
+[claims ledger](knowledge-base/decisions/ADR-013-published-claims-ledger.md) that tracks which figures we
+consider defensible and which we have retired.
+
+## What the analysis turned up
+
+We studied a naive baseline and the model itself before designing anything. Five things came out of it,
+all reproducible with `python3 knowledge-base/bench/verify_constants.py`. Full detail in
 [`01-VERIFIED-FACTS.md`](knowledge-base/01-VERIFIED-FACTS.md).
 
-1. **The 8/8/8 split is not balanced.** `lm_head` is 136M params — **9.13 transformer layers' worth of
-   compute** — so the shards really run **8 / 8 / 17.13** layer-equivalents. A pipeline runs at the speed of
-   its slowest stage, so this costs **1.539×** on layer-equivalents (1.30× measured wall clock). The fix is
-   three env-var edits: `11 / 11 / 2 + lm_head`.
-2. **The biggest payload is the logits, not the activation.** `argmax` runs on the coordinator, so node2
-   ships back the whole **607,744-byte** logit vector per token. Move `argmax` onto node2 and it becomes a
-   **4-byte token id** — **151,936×** on that hop. Hours of work; no compression scheme can beat not sending it.
-3. **No KV cache.** A 512-token generation performs **147,200** position-forwards per node instead of **543**
-   — **271× redundant compute**. GQA makes the cache almost free: 2 KV heads × 64 dims = **512 B per token
-   per layer**, so a 2048-token context is **25.2 MB for the whole model**.
-4. **935× fewer bytes on the wire** for one 512-token generation (1,821.7 MB → 1.95 MB) — and this is
-   deliberately *conservative*, see finding 5.
-5. **v0 does not chain — it is a star.** `node.py` has no outbound HTTP client at all, so the coordinator
-   relays every hop: **3 POSTs = 6 wire crossings per token**, with the activation crossing **4 times**.
-   The PoC's own README diagram describes a system the code does not implement. Chain routing is therefore
-   a real v1 change, not a given.
+1. **An even split is not even.** The output head is 136M parameters, which works out to 9.13 transformer
+   layers' worth of compute. So an 8/8/8 split really runs 8/8/17, and a pipeline moves at the speed of its
+   slowest stage. Splitting by layer count alone would cost 1.539x for nothing, which is why placement needs
+   to be cost aware.
+2. **The biggest thing on the wire would be the logits, not the activation.** If sampling happens on the
+   coordinator, the last device has to ship back a 607,744 byte vector every token. Sampling one hop earlier
+   turns that into a 4 byte token id.
+3. **Without a KV cache the recompute is brutal.** A 512 token reply would redo 147,200 position forwards
+   per device instead of 543. Grouped query attention makes the cache cheap enough that there is no reason
+   to skip it, at 12 KB per token for the whole model.
+4. **The wire traffic can come down by roughly 935x** for one 512 token generation, and we treat that as a
+   conservative figure. See the next point.
+5. **A coordinator that relays every hop costs double.** Three POSTs means six wire crossings per token,
+   with the activation crossing four times instead of two. This is why the design has devices hand off
+   directly, and it is the difference between the two lanes in the diagram above.
 
-## What we measured, and what it cost us
+## Ideas we tested and dropped
 
-The research fleet ran real experiments against the real checkpoint, and two of them killed their own
-team's proposal. Both are on the slides.
+Both of these looked good on paper. We ran them against the real model, they did not hold up, and we would
+rather record that than quietly leave them in the design.
 
-- **Per-tensor int8 destroys the model** — cosine 0.039, perplexity 411,041 against 18.6, 0.7% top-1
-  agreement. Cause, measured: **channel 62 carries |1701.9| against a 1.75 median — a 972× outlier**.
-  bf16 is free (KL 5.7e-5, greedy output bit-identical) and that is where v1 stops.
-- **Entropy coding never pays on the decode path.** LZ4 on fp32 activations achieves ratio **1.0042** — no
-  compression at all — while base64 *expands* 1.33× and burns 8.42 µs. The winning compressor is a dtype
-  cast, not a codec.
-- **Low-rank projection is a pessimisation at this size.** Rank-224 of 896 reproduces every next-token
-  choice exactly, but the projection costs **27.31 µs** to save **11 µs** of 1 GbE wire time. It only pays
-  below **394 Mbit/s**.
-- **A metric trap worth knowing:** rank-16 captures **99.95% of activation energy** and yields **12.5%**
-  top-1 agreement. Cosine, L2 and energy-retained will all certify a broken model. Gate on end-to-end
-  top-1 and KL, never on a hidden-state distance.
+- **Aggressive quantisation.** Per tensor int8 destroys the model: cosine similarity 0.039, perplexity
+  411,041 against a baseline of 18.6. The cause is measurable, one channel out of 896 carries 972x the
+  median magnitude. The plan stops at bf16.
+- **Compressing the activation.** Rank 224 of 896 reproduces every next token choice exactly, but the
+  projection costs 27.31 µs to save 11 µs of network time. It only starts paying below 394 Mbit/s, so it
+  stays out of the design and behind a link speed check.
 
-## Honest caveats
+There is also a trap worth recording: rank 16 captures 99.95% of activation energy and still yields only
+12.5% top-1 agreement. Any quality gate has to measure end to end agreement, never a distance between
+hidden states.
 
-- **935× is wire bytes, not wall clock.** One cached decode step measures ~72.9 ms single-process and
-  ~123.94 ms across the chain, while a bf16 hop on 1 GbE is ~14 µs. On a LAN this system is
-  **compute-bound**; the bytes win on WAN, on slow links and at long context.
-- **v1 has never been run as an integrated system.** The v1 ladder is modelled from measured stage times.
-- **Layer-sharded inference is not new** — SplitNN (2018) → Petals (2022) → exo (2024), and vLLM ships
-  cross-node pipeline parallelism behind one flag. The defensible claim is the trust and heterogeneity
-  model, not the mechanism.
-- **This is not cheaper than an API**, and split inference **is not encryption**.
-- Several transport figures are *reported* by a research agent with no script in `bench/`. They are tagged
-  as such. See [`90-AUDIT.md`](knowledge-base/90-AUDIT.md) findings F07 and F08.
+## What we are not claiming
 
-## Reproduce
+- **None of this is built.** The projected figures are modelled from measured stage times and exact
+  arithmetic on the model config. The integrated system has not been run.
+- **Not cheaper than an API.** A fleet of idle machines burns more in electricity than the tokens are worth
+  at market prices. The argument is fit, not cost. The devices are already yours and already on, and the
+  model does not fit on any one of them.
+- **Not encryption.** Splitting a model across machines raises the cost of recovering a prompt from
+  intermediate state. It does not prevent it.
+- **Not a new idea.** Layer sharded inference goes back to SplitNN in 2018, through Petals in 2022 and exo
+  in 2024, and vLLM ships cross node pipeline parallelism behind one flag. What we think is defensible is
+  the trust and heterogeneity model, not the mechanism.
+- **Phones are the goal, not the starting point.** Nothing has been run on a handset.
+
+## What is in this repository
+
+| | |
+|---|---|
+| [`01-VERIFIED-FACTS.md`](knowledge-base/01-VERIFIED-FACTS.md) | the five findings, with the script that regenerates them |
+| [`10-ARCHITECTURE.md`](knowledge-base/10-ARCHITECTURE.md) | the target design, component by component |
+| [`20-INFRA-AND-STACK.md`](knowledge-base/20-INFRA-AND-STACK.md) | serving runtimes surveyed, and what we would build on |
+| [`30-PERF-MODEL.md`](knowledge-base/30-PERF-MODEL.md) | the latency model and where the projections come from |
+| [`40-PITCH.md`](knowledge-base/40-PITCH.md) | the pitch, the demo script and the slides |
+| [`90-AUDIT.md`](knowledge-base/90-AUDIT.md) | an adversarial audit of our own numbers, 23 findings |
+| [`decisions/`](knowledge-base/decisions/) | 13 architecture decision records |
+| [`teams/`](knowledge-base/teams/) | 25 research reports behind the decisions |
+| [`bench/`](knowledge-base/bench/) | benchmark scripts and raw results |
+| [`assets/`](knowledge-base/assets/) | the animated walkthrough, the diagram and the deck |
+
+Start with [`90-AUDIT.md`](knowledge-base/90-AUDIT.md) before quoting any figure from here. It lists what we
+had to correct in our own work, including the numbers we retired outright.
+
+## Reproduce the analysis
 
 ```bash
-python3 knowledge-base/bench/verify_constants.py     # the five findings, from config.json
-python3 knowledge-base/assets/build_deck.py          # rebuild the 5-slide deck
-python3 -m http.server 8777 --directory knowledge-base/assets   # then open split-model-bench.html
+python3 knowledge-base/bench/verify_constants.py     # the five findings, from the model config
+python3 knowledge-base/assets/build_deck.py          # rebuild the slides
 ```
+
+An animated walkthrough of the design is at
+[decentralizedllm-pitch.vercel.app](https://decentralizedllm-pitch.vercel.app).
