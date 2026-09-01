@@ -1,0 +1,11 @@
+loading Qwen/Qwen2.5-0.5B-Instruct (fp32, cached) ...
+prompt (1, 5) = 'The capital of France is'
+
+A  reference (1 process) : [12095, 13, 1084, 374, 279, 7772, 3283, 304] ' Paris. It is the largest city in'
+A  3 shards, stateless   : max |diff| = 0.000e+00  OK
+B  3 shards, KV-cached   : [12095, 13, 1084, 374, 279, 7772, 3283, 304] ' Paris. It is the largest city in'
+B  cached == reference   : OK
+C  no renumber           : [12095, 13, 12095, 374, 279, 6722, 315, 9625] ' Paris. Paris is the capital of France'
+C  bug reproduced        : OK (B has teeth)
+
+PARITY OK — sharded+cached inference is token-identical to one-process inference.

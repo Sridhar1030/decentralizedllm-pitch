@@ -1,0 +1,761 @@
+<title>Split Model Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<!-- Google Fonts is the one host the Artifact CSP admits, and every stack below still
+     falls back to the platform faces, so this file also renders offline from disk. -->
+
+<style>
+:root{
+  --ground:#eaeef4; --surface:#ffffff; --surface-2:#dfe6ef; --line:#c3cfdd;
+  --ink:#0e141c; --ink-2:#44526580; --ink-2s:#445265; --ink-3:#78879a;
+  --n0:#0d7d74; --n1:#4c4bd0; --n2:#c2306b;
+  --ok:#15803d; --bad:#be123c; --accent:#a86200;
+  --glow:0 0 0 rgba(0,0,0,0);
+  --stack:#5a6b7e;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0a0f15; --surface:#111a23; --surface-2:#17212c; --line:#26323e;
+    --ink:#e9eff6; --ink-2:#9fb0c2; --ink-2s:#9fb0c2; --ink-3:#6a7c8f;
+    --n0:#2dd4bf; --n1:#8f8ffb; --n2:#f472a6;
+    --ok:#4ade80; --bad:#fb7185; --accent:#f0a83c;
+    --stack:#7d8ea1;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0a0f15; --surface:#111a23; --surface-2:#17212c; --line:#26323e;
+  --ink:#e9eff6; --ink-2:#9fb0c2; --ink-2s:#9fb0c2; --ink-3:#6a7c8f;
+  --n0:#2dd4bf; --n1:#8f8ffb; --n2:#f472a6;
+  --ok:#4ade80; --bad:#fb7185; --accent:#f0a83c;
+  --stack:#7d8ea1;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:28px 20px 56px; display:flex; flex-direction:column; gap:18px}
+
+/* ---------- masthead ---------- */
+.mast{display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px 22px; justify-content:space-between}
+.mast h1{
+  font-family:Archivo,"IBM Plex Sans",sans-serif; font-variation-settings:"wdth" 112,"wght" 700;
+  font-size:clamp(26px,3.6vw,40px); line-height:1.02; margin:0; letter-spacing:-.015em; text-wrap:balance;
+}
+.mast .sub{margin:6px 0 0; color:var(--ink-2s); max-width:60ch; font-size:14px}
+.rule{height:1px; background:var(--line); border:0; margin:0}
+.chipline{display:flex; gap:7px; flex-wrap:wrap}
+.tag{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; letter-spacing:.09em;
+  text-transform:uppercase; padding:4px 8px; border:1px solid var(--line); border-radius:3px;
+  color:var(--ink-2s); background:var(--surface); white-space:nowrap;
+}
+.tag.hot{color:var(--accent); border-color:color-mix(in oklab,var(--accent) 45%,var(--line))}
+
+/* ---------- stage ---------- */
+.stage{
+  background:var(--surface); border:1px solid var(--line); border-radius:6px;
+  overflow-x:auto; overflow-y:hidden; position:relative;
+}
+.stage svg{display:block; width:100%; height:auto}
+.scenehead{
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  padding:14px 18px 0;
+}
+.scenehead .no{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3);
+  letter-spacing:.1em; padding-top:3px;
+}
+.scenehead h2{
+  font-family:Archivo,sans-serif; font-variation-settings:"wdth" 112,"wght" 600;
+  font-size:19px; margin:0; letter-spacing:-.005em;
+}
+.cap{padding:5px 18px 14px; color:var(--ink-2s); font-size:14px; max-width:78ch; min-height:44px}
+.cap b{color:var(--ink); font-weight:600}
+.cap code{font-family:"IBM Plex Mono",monospace; font-size:12.5px; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+
+/* ---------- instrument strip ---------- */
+.instr{
+  display:grid; gap:1px; background:var(--line);
+  border:1px solid var(--line); border-radius:6px; overflow:hidden;
+  grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+}
+.cell{background:var(--surface); padding:11px 13px; display:flex; flex-direction:column; gap:5px; min-width:0}
+.cell .k{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+.cell .v{
+  font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:19px; font-weight:500; letter-spacing:-.01em; line-height:1.15;
+}
+.cell .v small{font-size:11px; font-weight:400; color:var(--ink-3); letter-spacing:0}
+.cell .n{font-size:11.5px; color:var(--ink-3); font-family:"IBM Plex Mono",monospace}
+.util{display:flex; gap:5px; align-items:flex-end; height:24px}
+.util i{flex:1; background:var(--surface-2); border-radius:1px; position:relative; height:100%}
+.util i b{position:absolute; bottom:0; left:0; right:0; border-radius:1px; display:block}
+
+/* ---------- transport ---------- */
+.transport{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:11px 13px;
+}
+button{
+  font:inherit; font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ink); background:var(--surface-2);
+  border:1px solid var(--line); border-radius:3px; padding:6px 11px; cursor:pointer;
+}
+button:hover{border-color:var(--ink-3)}
+button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+button[aria-pressed="true"],button.on{background:var(--accent); border-color:var(--accent); color:var(--ground)}
+.scrub{flex:1 1 220px; min-width:180px; accent-color:var(--accent); height:22px}
+.clock{
+  font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:12px; color:var(--ink-3); white-space:nowrap;
+}
+.scenes{display:flex; gap:6px; flex-wrap:wrap}
+.scenes button{padding:5px 9px; font-size:10.5px}
+
+/* ---------- scoreboard table ---------- */
+.sbwrap{overflow-x:auto; border:1px solid var(--line); border-radius:6px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:600px}
+th,td{padding:9px 13px; text-align:left; border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:500;
+}
+td.num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+td.win{color:var(--ok); font-weight:600}
+.foot{color:var(--ink-3); font-size:12.5px; max-width:78ch}
+.foot a{color:var(--accent)}
+
+@media (prefers-reduced-motion:reduce){ .stage svg *{transition:none!important} }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div>
+      <h1>Split Model Bench</h1>
+      <p class="sub">One 24-layer LLM, cut into three shards on three machines. No machine holds the whole model.
+      Watch where the time and the bytes actually go &mdash; and what four changes do about it.</p>
+    </div>
+    <div class="chipline">
+      <span class="tag">Qwen2.5-0.5B</span>
+      <span class="tag">24 layers / 3 shards</span>
+      <span class="tag hot">measured config</span>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <div class="stage">
+    <div class="scenehead">
+      <span class="no" id="sceneNo">01 / 06</span>
+      <h2 id="sceneTitle">One model, three machines</h2>
+    </div>
+    <p class="cap" id="sceneCap" aria-live="polite"></p>
+    <svg id="svg" viewBox="0 64 1180 400" role="img" aria-labelledby="svgTitle">
+      <title id="svgTitle">Animated diagram of an LLM split across three network nodes</title>
+      <defs>
+        <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="5"/>
+        </filter>
+      </defs>
+      <g id="wires"></g>
+      <g id="nodes"></g>
+      <g id="layers"></g>
+      <g id="packets"></g>
+      <g id="notes"></g>
+    </svg>
+  </div>
+
+  <div class="instr">
+    <div class="cell">
+      <span class="k">Payload / hop</span>
+      <span class="v" id="mPayload">&mdash;</span>
+      <span class="n" id="mPayloadN">forward hidden state</span>
+    </div>
+    <div class="cell">
+      <span class="k">Return path</span>
+      <span class="v" id="mReturn">&mdash;</span>
+      <span class="n" id="mReturnN">node2 &rarr; coordinator</span>
+    </div>
+    <div class="cell">
+      <span class="k">Node utilisation</span>
+      <span class="util" id="mUtil"><i><b></b></i><i><b></b></i><i><b></b></i></span>
+      <span class="n" id="mUtilN">&mdash;</span>
+    </div>
+    <div class="cell">
+      <span class="k">Wire / 512 tokens</span>
+      <span class="v" id="mWire">&mdash;</span>
+      <span class="n" id="mWireN">prompt 32 tok</span>
+    </div>
+    <div class="cell">
+      <span class="k">Tokens / sec <small style="text-transform:none;letter-spacing:0">(modelled)</small></span>
+      <span class="v" id="mTps">&mdash;</span>
+      <span class="n" id="mTpsN">&mdash;</span>
+    </div>
+    <div class="cell">
+      <span class="k">Encoding</span>
+      <span class="v" id="mEnc" style="font-size:14px">&mdash;</span>
+      <span class="n" id="mEncN">on the wire</span>
+    </div>
+  </div>
+
+  <div class="transport">
+    <button id="play" aria-pressed="true">Pause</button>
+    <button id="restart">Restart</button>
+    <input class="scrub" id="scrub" type="range" min="0" max="1000" value="0" aria-label="Timeline position">
+    <span class="clock" id="clock">0.0s / 0.0s</span>
+    <button id="speed">1&times;</button>
+  </div>
+
+  <div class="scenes" id="scenes"></div>
+
+  <div class="sbwrap">
+    <table>
+      <caption class="k" style="text-align:left;padding:11px 13px 0;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)">Scoreboard &middot; one 512-token generation, 32-token prompt</caption>
+      <thead><tr><th>Quantity</th><th>v0 as written</th><th>v1 four levers</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td>Position-forwards per node</td><td class="num">147,200</td><td class="num">543</td><td class="num win">271&times; less</td></tr>
+        <tr><td>Forward payload / hop</td><td class="num">up to 2.59 MB</td><td class="num">1,792 B</td><td class="num win">1,448&times; less</td></tr>
+        <tr><td>Return payload / token</td><td class="num">607,744 B</td><td class="num">4 B</td><td class="num win">151,936&times; less</td></tr>
+        <tr><td>Total bytes on the wire</td><td class="num">1,821.7 MB</td><td class="num">1.95 MB</td><td class="num win">935&times; less</td></tr>
+        <tr><td>Pipeline utilisation ceiling</td><td class="num">33%</td><td class="num">~100% at R=3</td><td class="num win">3&times; throughput</td></tr>
+        <tr><td>Slowest-stage imbalance</td><td class="num">1.55&times; off balance</td><td class="num">balanced 11/11/11</td><td class="num win">1.55&times; free</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   Ground truth. Every number below is derived from the real
+   Qwen2.5-0.5B-Instruct config.json, not invented.
+   H=896  L=24  heads=14  kv_heads=2  head_dim=64  V=151936
+   ============================================================ */
+const H = 896, V = 151936, B64 = 4/3;
+const HID_F32 = H*4;                    // 3584
+const LOGITS  = V*4;                    // 607744
+const LOGITS_B64 = Math.round(LOGITS*B64); // 810325
+
+const NODES = [
+  {cx:300, name:"node0", v0:"embed + L0\u20137",       v1:"embed + L0\u201310",      hue:"--n0", eq0:8.0,  eq1:11.0},
+  {cx:620, name:"node1", v0:"L8\u201315",              v1:"L11\u201321",             hue:"--n1", eq0:8.0,  eq1:11.0},
+  {cx:940, name:"node2", v0:"L16\u201323 + lm_head",   v1:"L22\u201323 + lm_head",   hue:"--n2", eq0:17.13,eq1:11.13}
+];
+const CY = 268, CARD_W = 176, CARD_H = 182;
+const CARD_T = CY - CARD_H/2;
+const CLIENT_X = 96;
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const gWires=$("wires"), gNodes=$("nodes"), gLayers=$("layers"), gPackets=$("packets"), gNotes=$("notes");
+
+function el(tag, attrs, parent){
+  const n = document.createElementNS(SVG_NS, tag);
+  for(const k in attrs) if(attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+  (parent||gNotes).appendChild(n); return n;
+}
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+// map a byte count to a drawn width, log-scaled: the packet IS the data
+const pw = b => clamp(9 + 15*Math.log10(Math.max(b,1)), 9, 132);
+function bytes(b){
+  return b < 1e6 ? b.toLocaleString()+" B" : (b/1e6).toFixed(2)+" MB";
+}
+
+/* ---------- static wire geometry ---------- */
+const SEG = [
+  {x1:CLIENT_X+52, x2:NODES[0].cx-CARD_W/2},
+  {x1:NODES[0].cx+CARD_W/2, x2:NODES[1].cx-CARD_W/2},
+  {x1:NODES[1].cx+CARD_W/2, x2:NODES[2].cx-CARD_W/2}
+];
+const OUT_Y = 128, RET_Y = 412;
+const STAR = [];
+for(let i=0;i<3;i++){
+  STAR.push({d:`M ${CLIENT_X} ${CY-46} V ${OUT_Y} H ${NODES[i].cx} V ${CARD_T}`, node:i, out:true});
+  STAR.push({d:`M ${NODES[i].cx} ${CARD_T+CARD_H} V ${RET_Y} H ${CLIENT_X} V ${CY+46}`, node:i, out:false});
+}
+const RETURN_D = `M ${NODES[2].cx+CARD_W/2} ${CY} H 1108 V 418 H ${CLIENT_X} V ${CY+46}`;
+
+/* ---------- build the persistent scaffold once ---------- */
+SEG.forEach((s,i)=>{
+  el("line",{x1:s.x1,y1:CY,x2:s.x2,y2:CY,stroke:"var(--line)","stroke-width":2,id:"wire"+i},gWires);
+});
+el("path",{d:RETURN_D,fill:"none",stroke:"var(--line)","stroke-width":2,"stroke-dasharray":"5 5",id:"wireR"},gWires);
+el("text",{x:10,y:458,fill:"var(--ink-3)","font-family":"IBM Plex Mono, monospace","font-size":10},gNodes)
+  .textContent = "packet width \u221d log(bytes) \u2014 a 400,000x range will not fit a linear scale";
+const retPath = $("wireR");
+
+// coordinator block
+el("rect",{x:CLIENT_X-52,y:CY-46,width:104,height:92,rx:4,fill:"var(--surface-2)",stroke:"var(--line)"},gNodes);
+el("text",{x:CLIENT_X,y:CY-16,"text-anchor":"middle",fill:"var(--ink-2s)","font-family":"IBM Plex Mono, monospace","font-size":11},gNodes).textContent="gateway";
+el("text",{x:CLIENT_X,y:CY+2,"text-anchor":"middle",fill:"var(--ink-2s)","font-family":"IBM Plex Mono, monospace","font-size":11},gNodes).textContent="+";
+el("text",{x:CLIENT_X,y:CY+20,"text-anchor":"middle",fill:"var(--ink-2s)","font-family":"IBM Plex Mono, monospace","font-size":11},gNodes).textContent="coordinator";
+
+// node cards
+const cards = NODES.map((n,i)=>{
+  const g = el("g",{},gNodes);
+  const rect = el("rect",{x:n.cx-CARD_W/2,y:CARD_T,width:CARD_W,height:CARD_H,rx:5,
+    fill:"var(--surface)",stroke:"var(--line)","stroke-width":1.5},g);
+  const nm = el("text",{x:n.cx-CARD_W/2+14,y:CARD_T+22,fill:`var(${n.hue})`,
+    "font-family":"IBM Plex Mono, monospace","font-size":12,"font-weight":600},g);
+  nm.textContent = n.name;
+  const rangeT = el("text",{x:n.cx-CARD_W/2+14,y:CARD_T+CARD_H-14,fill:"var(--ink-3)",
+    "font-family":"IBM Plex Mono, monospace","font-size":10.5},g);
+  rangeT.textContent = n.v0;
+  const badge = el("text",{x:n.cx+CARD_W/2-14,y:CARD_T+22,"text-anchor":"end",fill:"var(--ink-3)",
+    "font-family":"IBM Plex Mono, monospace","font-size":10.5},g);
+  return {g,rect,nm,rangeT,badge};
+});
+
+// 24 layer bars
+const LW=46, LH=9, LGAP=13;
+const layerBars = [];
+for(let i=0;i<24;i++){
+  layerBars.push(el("rect",{width:LW,height:LH,rx:2,fill:"var(--stack)",x:0,y:0},gLayers));
+}
+const stackPos = i => ({x:590-LW/2, y:CY-(24*LGAP)/2 + i*LGAP});
+function shardPos(i, split){          // split = array of 3 layer-counts
+  let n=0, acc=0;
+  while(n<2 && i >= acc+split[n]){ acc+=split[n]; n++; }
+  const k = i-acc, cnt = split[n];
+  const top = CY - (cnt*LGAP)/2 + 4;
+  return {x:NODES[n].cx-LW/2, y:top + k*LGAP, node:n};
+}
+
+/* ============================================================
+   Scenes
+   ============================================================ */
+const SCENES = [
+  {n:"01", t:8,  title:"One model, three machines",
+   cap:`Qwen2.5-0.5B is <b>24 transformer layers</b>. We cut the stack into three contiguous shards and give one to each machine. Every shard runs in its own container; <b>no single node ever holds the full model</b>. Said honestly, because a judge will read the source: <em>today each container still calls <code>from_pretrained</code> at boot and loads the whole checkpoint before slicing, and <code>tie_word_embeddings</code> makes node&nbsp;0's embedding and node&nbsp;2's <code>lm_head</code> the same 136M-parameter matrix \u2014 so the real split is 51.7 / 24.1 / 51.7%, not 33 / 33 / 33. Per-shard <code>safetensors</code> is a ~40-line fix, and it is v1.</em>`},
+  {n:"02", t:10, title:"One token, three hops",
+   cap:`A prompt enters the coordinator. Node&nbsp;0 embeds it and runs its layers, then hands the <b>hidden state</b> to node&nbsp;1, which hands it to node&nbsp;2. Node&nbsp;2 owns <code>lm_head</code>, so it produces the logits \u2014 and one token comes back.`},
+  {n:"03", t:14, title:"What v0 actually costs",
+   cap:`Three defects, all visible at once. There is <b>no KV cache</b>, so the whole sequence is re-sent and re-computed every single token \u2014 the packet grows without bound. It travels as <b>fp32 inside base64 inside JSON</b>. And <code>argmax</code> runs on the coordinator, so node&nbsp;2 ships back the entire <b>607,744-byte logit vector</b> per token. Meanwhile two of three nodes sit dark. And the route is a <b>star, not a chain</b>: the coordinator POSTs to each node in turn, so every activation crosses the wire twice \u2014 <b>3 POSTs = 6 crossings per token</b>, four of them activation-sized.`},
+  {n:"04", t:20, title:"Four levers",
+   cap:``},
+  {n:"05", t:9,  title:"When a node disappears",
+   cap:`Kill node&nbsp;1 and one third of the model is gone \u2014 v0 returns a 500. With a hot standby holding the same layer range, the coordinator re-routes. The cost is honest: the dead node's <b>KV cache dies with it</b>, so the session replays its prompt on the standby before decoding resumes.`},
+  {n:"06", t:10, title:"What the levers bought",
+   cap:`<b>935\u00d7 fewer bytes</b> on the wire and <b>271\u00d7</b> less redundant compute. Now the caveat that belongs on the same slide, because we measured it: one cached decode step of the 3-node chain takes <b>123.94 ms</b> on CPU (T1-A1, measured; 72.9 ms for the same 24 layers in a single process, T2-A2), while a bf16 hop on 1 GbE takes <b>14 \u00b5s \u2014 0.011% of it</b>. On a LAN this system is <b>compute-bound</b>, so the wall-clock win comes from the eliminated recompute and the 1.55\u00d7 rebalance, not from the bytes. The bytes win on WAN, on slow links, and at long context.`}
+];
+const LEVERS = [
+  {k:"KV cache + local argmax", why:"send only what changed",
+   cap:`<b>Lever 1 \u2014 stop sending what the other end already has.</b> Cache K/V per shard and send only the newest position: <code>[1, 896]</code> instead of <code>[seq, 896]</code>. GQA makes this nearly free \u2014 2 KV heads \u00d7 64 dims = <b>512 B per token per layer</b>, so a 2048-token context is 25 MB for the entire model. Move <code>argmax</code> onto node 2 and the return path becomes a <b>4-byte token id</b>.`},
+  {k:"DLP binary frame", why:"drop the text tax",
+   cap:`<b>Lever 2 \u2014 stop encoding tensors as text.</b> A fixed <b>40-byte</b> little-endian header (magic, version, msg_type, flags, request_id, session_id, seq_len, dim1, payload_len, credit, dtype, codec, reserved, crc32c \u2014 <code>struct '&lt;4sBBHIIIIIIBBHI'</code>, and 40 % 8 == 0 so the payload stays 8-byte aligned) then the raw buffer, length-prefixed on a <b>persistent, pipelined TCP connection</b> with <code>TCP_NODELAY</code> set. That removes base64's 33% inflation, the JSON parse of a multi-megabyte string, and \u2014 worst of all \u2014 the fresh TCP handshake v0 pays on <em>every hop of every token</em>.
+   It also stops the coordinator relaying: nodes hand off directly, so a token costs
+   <b>4 wire crossings instead of 6</b>, and only 2 of them carry an activation.`},
+  {k:"bf16 on the wire", why:"half the bits, and zero milliseconds",
+   cap:`<b>Lever 3 \u2014 compress the activation itself, and watch the clock not move.</b> We measured every option on the real model against an fp32 reference. <b>bf16 is free</b>: 3,584 B \u2192 1,792 B at <b>KL 5.7e-5</b>, <b>99.74% top-1 agreement</b>, greedy output <b>bit-identical</b> on 4 of 4 prompts, for a <b>3.5 \u00b5s</b> cast. But on a LAN it buys <b>0 ms</b> \u2014 the tok/s readout above does not move \u2014 because post-KV-cache the link carries 1.8 KB against \u2265120 ms of compute. It pays on WAN, below ~163 Mbit/s per hop. A lever that visibly fails is the reason to believe the other three. int8 is not \u2014 per-token scaling flips <b>7.3% of tokens</b> (perplexity +3.2%), and per-<em>tensor</em> int8 destroys the model outright (cosine 0.039, perplexity 411,041 against 18.6). The cause is measurable: <b>channel 62 carries |1701.9| against a 1.75 median \u2014 a 972\u00d7 outlier</b>. Ship <b>bf16</b> \u2014 it needs no overflow guard, because bf16 keeps fp32\u2019s exponent range and only drops mantissa bits (fp16 would need one: the max activation here is 1701.9). Keep int8 behind a quality gate, and only for WAN.`},
+  {k:"Rebalance + concurrency", why:"keep every node busy",
+   cap:`<b>Lever 4 \u2014 fill the pipeline.</b> <code>lm_head</code> is 136M params \u2014 <b>9.13 layers' worth of compute</b> \u2014 so the "equal" 8/8/8 split really runs 8/8/17 and is <b>1.55\u00d7 off balance</b>. Re-cut to 11/11/11+head. Then note that a single request <em>cannot</em> fill a pipeline: token t+1 depends on token t. Only <b>concurrent requests</b> can. With R requests over S stages, utilisation is min(1, R/S) \u2014 so R=3 lights all three nodes.`}
+];
+const TOTAL = SCENES.reduce((a,s)=>a+s.t,0);
+
+/* ---------- readouts ---------- */
+const M = {
+  payload:$("mPayload"), payloadN:$("mPayloadN"),
+  ret:$("mReturn"), retN:$("mReturnN"),
+  util:[...$("mUtil").querySelectorAll("b")], utilN:$("mUtilN"),
+  wire:$("mWire"), wireN:$("mWireN"),
+  tps:$("mTps"), tpsN:$("mTpsN"),
+  enc:$("mEnc"), encN:$("mEncN")
+};
+function readout(o){
+  M.payload.textContent = o.payload;
+  M.payloadN.textContent = o.payloadN;
+  M.ret.textContent = o.ret;
+  M.retN.textContent = o.retN;
+  M.wire.textContent = o.wire;
+  M.wireN.textContent = o.wireN;
+  M.tps.textContent = o.tps ?? "\u2014";
+  M.tpsN.textContent = o.tpsN ?? "\u2014";
+  M.enc.textContent = o.enc;
+  M.encN.textContent = o.encN;
+  M.utilN.textContent = o.utilN;
+  o.util.forEach((u,i)=>{
+    M.util[i].style.height = (clamp(u,0,1)*100)+"%";
+    M.util[i].style.background = u>0 ? `var(${NODES[i].hue})` : "transparent";
+  });
+}
+
+/* ============================================================
+   Render \u2014 a pure function of absolute time.
+   Scrubbing is therefore exact, not approximate.
+   ============================================================ */
+function render(T){
+  gPackets.textContent = ""; gNotes.textContent = "";
+  let idx=0, acc=0;
+  while(idx < SCENES.length-1 && T >= acc + SCENES[idx].t){ acc += SCENES[idx].t; idx++; }
+  const S = SCENES[idx], t = clamp(T-acc, 0, S.t), p = t/S.t;
+
+  $("sceneNo").textContent = S.n + " / 06";
+  $("sceneTitle").textContent = S.title;
+
+  // defaults
+  cards.forEach((c,i)=>{
+    c.rect.setAttribute("stroke","var(--line)");
+    c.rect.setAttribute("stroke-width",1.5);
+    c.rect.setAttribute("opacity",1);
+    c.g.setAttribute("opacity",1);
+    c.badge.textContent="";
+    c.rangeT.textContent = NODES[i].v0;
+    c.nm.setAttribute("fill",`var(${NODES[i].hue})`);
+  });
+  [0,1,2].forEach(i=>$("wire"+i).setAttribute("stroke","var(--line)"));
+  retPath.setAttribute("stroke","var(--line)");
+  gLayers.setAttribute("opacity",1);
+  gWires.setAttribute("opacity",1);   // scene 01 fades this in; every other scene needs it back
+
+  switch(idx){
+    case 0: sceneSplit(p); break;
+    case 1: sceneHop(p); break;
+    case 2: sceneProblem(p); break;
+    case 3: sceneLevers(p); break;
+    case 4: sceneFail(p); break;
+    case 5: sceneScore(p); break;
+  }
+  if(idx!==3) $("sceneCap").innerHTML = S.cap;
+
+  $("clock").textContent = T.toFixed(1)+"s / "+TOTAL.toFixed(1)+"s";
+  [...$("scenes").children].forEach((b,i)=>b.classList.toggle("on", i===idx));
+}
+
+function drawLayers(split, opacity, spread){
+  gLayers.setAttribute("opacity", opacity);
+  for(let i=0;i<24;i++){
+    const a = stackPos(i), b = shardPos(i, split);
+    const x = lerp(a.x, b.x, spread), y = lerp(a.y, b.y, spread);
+    const bar = layerBars[i];
+    bar.setAttribute("x", x); bar.setAttribute("y", y);
+    bar.setAttribute("fill", spread > .55 ? `var(${NODES[b.node].hue})` : "var(--stack)");
+    bar.setAttribute("opacity", spread > .55 ? .78 : .5);
+  }
+}
+function note(x,y,txt,color,size,anchor){
+  const n = el("text",{x,y,"text-anchor":anchor||"middle",fill:color||"var(--ink-2s)",
+    "font-family":"IBM Plex Mono, monospace","font-size":size||11.5},gNotes);
+  n.textContent = txt; return n;
+}
+function packet(x, y, b, hue, label){
+  const w = pw(b), h = 22;
+  el("rect",{x:x-w/2,y:y-h/2,width:w,height:h,rx:3,fill:`var(${hue})`,opacity:.2,filter:"url(#soft)"},gPackets);
+  el("rect",{x:x-w/2,y:y-h/2,width:w,height:h,rx:3,fill:`var(${hue})`},gPackets);
+  if(label){
+    const tx = el("text",{x:x,y:y-h/2-9,"text-anchor":"middle",fill:`var(${hue})`,
+      "font-family":"IBM Plex Mono, monospace","font-size":11,"font-weight":600},gPackets);
+    tx.textContent = label;
+  }
+}
+function drawStar(active, payloadOf){
+  gWires.setAttribute("opacity",0);            // v0 does not use the chain wires
+  STAR.forEach((leg,i)=>{
+    const on = i===active;
+    el("path",{d:leg.d,fill:"none",stroke:on?`var(${NODES[leg.node].hue})`:"var(--line)",
+      "stroke-width":on?2.5:1.5,"stroke-dasharray":leg.out?null:"5 5"},gNotes);
+  });
+  const leg = STAR[active];
+  const path = el("path",{d:leg.d,fill:"none",stroke:"none"},gPackets);
+  return {leg, path};
+}
+function packetOnPath(path, f, b, hue, label){
+  const pt = path.getPointAtLength(clamp(f,0,1)*path.getTotalLength());
+  packet(pt.x, pt.y, b, hue, label);
+}
+function litWire(i,hue){ $("wire"+i).setAttribute("stroke",`var(${hue})`); }
+function litCard(i){
+  cards[i].rect.setAttribute("stroke",`var(${NODES[i].hue})`);
+  cards[i].rect.setAttribute("stroke-width",2.5);
+}
+function dimCard(i){ cards[i].g.setAttribute("opacity",.45); }
+
+/* ---- 01 : the split ---- */
+function sceneSplit(p){
+  const spread = ease(clamp((p-.22)/.5,0,1));
+  const fade   = clamp((p-.18)/.28,0,1);
+  drawLayers([8,8,8], 1, spread);
+  cards.forEach(c=>c.g.setAttribute("opacity", fade));
+  gWires.setAttribute("opacity", fade);
+  if(p<.24) note(590, CY-(24*LGAP)/2 - 24, "24 transformer layers", "var(--ink-2s)", 13);
+  if(spread>.9){
+    NODES.forEach((n,i)=>{ cards[i].badge.textContent = "8 layers"; });
+    note(590, 442, "no node holds the full model", "var(--accent)", 13);
+  }
+  readout({payload:"\u2014",payloadN:"idle",ret:"\u2014",retN:"idle",util:[0,0,0],utilN:"idle",
+    wire:"\u2014",wireN:"\u2014",enc:"fp32",encN:"model weights",
+    tps:"\u2014", tpsN:"not running"});
+}
+
+/* ---- 02 : one token, three hops ---- */
+// v0 star: coord->n0(ids), n0->coord(hidden), coord->n1, n1->coord, coord->n2, n2->coord(logits)
+function legPayload(i, seq){
+  const fwd = Math.round(seq*HID_F32*B64);
+  if(i===0) return {b:seq*6,       lbl:"input_ids"};
+  if(i===5) return {b:LOGITS_B64,  lbl:"logits"};
+  return {b:fwd, lbl:"hidden [seq,896]"};
+}
+function sceneHop(p){
+  drawLayers([8,8,8], .55, 1);
+  const stage = clamp(p,0,0.999)*6, k = Math.floor(stage), f = stage-k;
+  const {leg, path} = drawStar(k);
+  const pay = legPayload(k, 33);
+  litCard(leg.node);
+  packetOnPath(path, f, pay.b, NODES[leg.node].hue, bytes(pay.b)+" "+pay.lbl);
+  note(590, 92, "crossing "+(k+1)+" of 6   \u00b7   every hop round-trips through the coordinator",
+       "var(--ink-2s)", 12.5);
+  if(k===5 && f>.8) note(CLIENT_X+150, CY+86, '\u2192 token  "The"', "var(--ok)", 14, "start");
+  cards[2].badge.textContent = "lm_head";
+  readout({
+    payload: bytes(HID_F32), payloadN:"hidden state, fp32",
+    ret: bytes(LOGITS_B64), retN:"full logit vector, base64",
+    util:[leg.node===0?.9:.12, leg.node===1?.9:.12, leg.node===2?.9:.12],
+    utilN:"one request \u00b7 one node at a time",
+    wire:"\u2014", wireN:"single token", enc:"fp32 \u00b7 base64 \u00b7 JSON", encN:"HTTP/1.1",
+    tps:"1.27", tpsN:"785.3 ms/token (measured)"
+  });
+}
+
+/* ---- 03 : the problem ---- */
+function sceneProblem(p){
+  drawLayers([8,8,8], .5, 1);
+  const tok = Math.floor(p*300)+1, seq = 32 + tok;
+  const fwd = Math.round(seq*HID_F32*B64);
+  const stage = (p*180)%6, k = Math.floor(stage), f = stage-k;
+  const {leg, path} = drawStar(k);
+  const pay = legPayload(k, seq);
+  [0,1,2].forEach(i=> i===leg.node ? litCard(i) : dimCard(i));
+  packetOnPath(path, f, pay.b, NODES[leg.node].hue, bytes(pay.b));
+
+  note(590, 88, "token "+tok+" of 512   \u00b7   sequence length "+seq, "var(--ink-2s)", 12.5);
+  note(590, 108, "the ENTIRE sequence is re-sent and re-computed, every token", "var(--bad)", 13);
+  note(590, 448, "3 POSTs = 6 wire crossings \u00b7 4 of them carry the activation",
+       "var(--bad)", 12);
+  if(p>.4) note(150, 170, "2 of 3 nodes idle \u2192 33% ceiling", "var(--bad)", 11.5, "start");
+
+  readout({
+    payload: bytes(fwd), payloadN:"grows with every token",
+    ret: bytes(LOGITS_B64), retN:"argmax runs on the coordinator",
+    util:[leg.node===0?.95:.05, leg.node===1?.95:.05, leg.node===2?.95:.05],
+    utilN:"33% ceiling \u00b7 2 of 3 idle",
+    wire:"1,821.7 MB", wireN:"conservative; star-routed is ~2,814 MB",
+    enc:"fp32 \u00b7 base64 \u00b7 JSON", encN:"new TCP connection per hop",
+    tps:"1.27", tpsN:"3 POSTs \u00b7 6 wire crossings"
+  });
+}
+
+/* ---- 04 : the four levers ---- */
+function sceneLevers(p){
+  const li = clamp(Math.floor(p*4),0,3), lp = (p*4)-li;
+  $("sceneCap").innerHTML = LEVERS[li].cap;
+
+  const split = li>=3 ? [11,11,2] : [8,8,8];
+  drawLayers(split, .5, 1);
+  if(li>=3) cards.forEach((c,i)=>{ c.rangeT.textContent = NODES[i].v1; });
+
+  // payload after each cumulative lever
+  // (32 prefill positions + 511 decode steps) x bytes x 2 hops
+  const PAY = [HID_F32, HID_F32, 1792, 1792];       // KV cache -> binary frame -> bf16 -> bf16
+  const ENC = ["fp32 \u00b7 base64 \u00b7 KV-cached","fp32 \u00b7 DLP binary","bf16 \u00b7 DLP binary","bf16 \u00b7 DLP binary"];
+  const WIRE= ["5.19 MB","3.89 MB","1.95 MB","1.95 MB"];
+  // The clock. 1.27 tok/s is measured (T1-A1, seq=512); every value after it is modelled by
+  // composing measured per-stage times. Lever 3 deliberately does not move it.
+  const TPS = ["6.94","8.05","8.05","24.21"];
+  const TPSN= ["was 1.27 \u00b7 KV cache + argmax","+1.11 \u00b7 binary frame",
+               "unchanged \u2014 bf16 buys 0 ms on a LAN","R=3 \u00b7 19.0x vs 1.27"];
+  const pay = PAY[li];
+
+  if(li < 3){
+    const phase = (p*22)%3, active = Math.floor(phase);
+    [0,1,2].forEach(i=> i===active ? litCard(i) : dimCard(i));
+    const s = SEG[clamp(active,0,2)];
+    litWire(active, NODES[Math.max(active-1,0)].hue);
+    const onWire = active===0 ? 4 : pay;   // hop 0 is just the new token id now
+    packet(lerp(s.x1,s.x2,phase-active), CY, onWire, NODES[Math.max(active-1,0)].hue,
+           bytes(onWire) + (active===0 ? " id" : ""));
+    // ghost of the v0 packet, for scale
+    const g = pw(1586517), gh = 22;
+    el("rect",{x:590-g/2,y:150-gh/2,width:g,height:gh,rx:3,fill:"none",
+      stroke:"var(--bad)","stroke-width":1.5,"stroke-dasharray":"4 4"},gPackets);
+    note(590, 132, "v0 packet at token 300 \u00b7 1.59 MB", "var(--bad)", 11);
+  } else {
+    // three concurrent requests fill the pipeline
+    [0,1,2].forEach(litCard);
+    [0,1,2].forEach(i=>litWire(i, NODES[Math.max(i-1,0)].hue));
+    for(let r=0;r<3;r++){
+      const ph = ((p*18)+r) % 3, a = Math.floor(ph), s = SEG[a];
+      packet(lerp(s.x1,s.x2,ph-a), CY-16+r*16, a===0?4:pay, NODES[Math.max(a-1,0)].hue,
+             r===0 ? bytes(a===0?4:pay) : null);
+    }
+    NODES.forEach((n,i)=>{ cards[i].badge.textContent = (i<2?"11 layers":"2 + head"); });
+    note(590, 118, "R = 3 concurrent requests  \u2192  utilisation = min(1, R/S) = 100%", "var(--ok)", 13);
+  }
+
+  note(590, 442, "lever "+(li+1)+" / 4 \u00b7 "+LEVERS[li].k+" \u2014 "+LEVERS[li].why, "var(--accent)", 12.5);
+  const u = li>=3 ? [.97,.97,.97] : [.34,.34,.34];
+  readout({
+    payload: bytes(pay), payloadN: li>=2 ? "bf16, one position" : "fp32, one position",
+    ret:"4 B", retN:"token id \u2014 argmax on node 2",
+    util:u, utilN: li>=3 ? "~100% \u00b7 R=3 fills S=3 stages" : "33% \u00b7 still one request",
+    wire: WIRE[li], wireN:"512 tokens, cumulative",
+    enc: ENC[li], encN: li>=1 ? "persistent TCP \u00b7 TCP_NODELAY" : "HTTP/1.1",
+    tps: TPS[li], tpsN: TPSN[li]
+  });
+}
+
+/* ---- 05 : failure ---- */
+function sceneFail(p){
+  drawLayers([11,11,2], .5, 1);
+  cards.forEach((c,i)=>{ c.rangeT.textContent = NODES[i].v1; });
+  const dead = p>.22;
+  const recovered = p>.62;
+
+  if(dead && !recovered){
+    cards[1].rect.setAttribute("stroke","var(--bad)");
+    cards[1].rect.setAttribute("stroke-width",2.5);
+    cards[1].g.setAttribute("opacity",.42);
+    cards[1].badge.textContent = "DOWN";
+    cards[1].nm.setAttribute("fill","var(--bad)");
+    note(620, CARD_T-18, "node1 lost \u2014 layers 11\u201321 gone", "var(--bad)", 12.5);
+    note(590, 442, "v0 behaviour: HTTP 500, the model is incomplete", "var(--bad)", 12.5);
+  } else if(recovered){
+    [0,1,2].forEach(litCard);
+    cards[1].badge.textContent = "standby";
+    const ph = (p*14)%3, a = Math.floor(ph), s = SEG[a];
+    litWire(a, NODES[Math.max(a-1,0)].hue);
+    packet(lerp(s.x1,s.x2,ph-a), CY, 1792, NODES[Math.max(a-1,0)].hue, "1,792 B");
+    note(620, CARD_T-18, "standby holds the same layer range", "var(--ok)", 12.5);
+    note(590, 442, "re-routed \u00b7 KV cache lost with the node \u00b7 prompt replayed", "var(--accent)", 12.5);
+  } else {
+    [0,1,2].forEach(litCard);
+    const ph=(p*14)%3, a=Math.floor(ph), s=SEG[a];
+    litWire(a, NODES[Math.max(a-1,0)].hue);
+    packet(lerp(s.x1,s.x2,ph-a), CY, 1792, NODES[Math.max(a-1,0)].hue, "1,792 B");
+  }
+  readout({
+    payload: dead&&!recovered ? "\u2014" : "1,792 B", payloadN: dead&&!recovered?"stalled":"bf16",
+    ret: dead&&!recovered ? "HTTP 500" : "4 B", retN: dead&&!recovered?"pipeline incomplete":"token id",
+    util: dead&&!recovered ? [0,0,0] : [.95,.95,.95],
+    utilN: dead&&!recovered ? "outage" : (recovered?"recovered on standby":"healthy"),
+    wire: dead&&!recovered ? "\u2014" : "1.95 MB", wireN:"512 tokens",
+    enc: dead&&!recovered ? "\u2014" : "bf16 \u00b7 DLP", encN: dead&&!recovered?"\u2014":"persistent TCP",
+    tps: dead&&!recovered ? "0" : "24.21", tpsN: dead&&!recovered ? "outage" : "R=3, balanced split"
+  });
+}
+
+/* ---- 06 : scoreboard ---- */
+const SCORE = [
+  ["bytes on the wire",   "1,821.7 MB", "1.95 MB",  "935\u00d7"],
+  ["redundant compute",   "147,200",    "543",      "271\u00d7"],
+  ["return path / token", "607,744 B",  "4 B",      "151,936\u00d7"],
+  ["utilisation ceiling", "33%",        "~100%",    "3\u00d7"],
+  ["stage imbalance",     "1.55\u00d7 off",  "balanced", "1.55\u00d7"]
+];
+function sceneScore(p){
+  gLayers.setAttribute("opacity",.12);
+  drawLayers([11,11,2], .12, 1);
+  cards.forEach((c,i)=>{ c.g.setAttribute("opacity",.3); c.rangeT.textContent = NODES[i].v1; });
+  const rows = clamp(Math.floor(p*8), 0, 5);
+  note(590, 92, "v0  \u2192  v1", "var(--ink-3)", 12);
+  for(let i=0;i<rows;i++){
+    const y = 132 + i*46;
+    const o = clamp((p*8 - i)*2, 0, 1);
+    const g = el("g",{opacity:o},gNotes);
+    const t1 = el("text",{x:150,y,fill:"var(--ink-2s)","font-family":"IBM Plex Sans, sans-serif","font-size":14},g);
+    t1.textContent = SCORE[i][0];
+    const t2 = el("text",{x:640,y,"text-anchor":"end",fill:"var(--bad)","font-family":"IBM Plex Mono, monospace","font-size":14},g);
+    t2.textContent = SCORE[i][1];
+    const t3 = el("text",{x:860,y,"text-anchor":"end",fill:"var(--ok)","font-family":"IBM Plex Mono, monospace","font-size":14},g);
+    t3.textContent = SCORE[i][2];
+    const t4 = el("text",{x:1040,y,"text-anchor":"end",fill:"var(--accent)","font-family":"IBM Plex Mono, monospace","font-size":14,"font-weight":600},g);
+    t4.textContent = SCORE[i][3];
+    el("line",{x1:150,y1:y+12,x2:1040,y2:y+12,stroke:"var(--line)","stroke-width":1},g);
+  }
+  if(p>.75) note(590, 434, "compute-bound on a fast LAN \u2014 the bytes win shows up on WAN and at long context", "var(--ink-3)", 11.5);
+  readout({payload:"1,792 B",payloadN:"bf16, one position",ret:"4 B",retN:"token id",
+    util:[.97,.97,.97],utilN:"~100% at R=3",wire:"1.95 MB",wireN:"vs 1,821.7 MB",
+    enc:"bf16 \u00b7 DLP binary",encN:"persistent TCP",
+    tps:"24.21", tpsN:"vs 1.27 measured \u2014 19.0x"});
+}
+
+/* ============================================================
+   Transport
+   ============================================================ */
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let T = reduce ? SCENES[0].t*0.94 : 0, playing = !reduce, last = null, rate = 1;
+
+SCENES.forEach((s,i)=>{
+  const b = document.createElement("button");
+  b.textContent = s.n + "  " + s.title;
+  b.addEventListener("click", ()=>{
+    let acc=0; for(let k=0;k<i;k++) acc += SCENES[k].t;
+    T = acc + .01; render(T); syncScrub();
+  });
+  $("scenes").appendChild(b);
+});
+
+function syncScrub(){ $("scrub").value = Math.round(T/TOTAL*1000); }
+$("scrub").addEventListener("input", e=>{ T = e.target.value/1000*TOTAL; render(T); });
+$("play").addEventListener("click", ()=>{
+  playing = !playing;
+  $("play").textContent = playing ? "Pause" : "Play";
+  $("play").setAttribute("aria-pressed", String(playing));
+  last = null;
+});
+$("restart").addEventListener("click", ()=>{ T=0; render(T); syncScrub(); });
+
+/* keymap: space = play/pause, arrows = scrub 1 s, 1-6 = jump to scene, r = restart */
+addEventListener("keydown", e=>{
+  if(e.target.matches("input,textarea,button")) return;
+  const k = e.key;
+  if(k === " ")                { $("play").click(); }
+  else if(k === "ArrowRight")  { T = Math.min(TOTAL, T+1); render(T); syncScrub(); }
+  else if(k === "ArrowLeft")   { T = Math.max(0,      T-1); render(T); syncScrub(); }
+  else if(k === "r" || k === "R") { $("restart").click(); }
+  else if(k >= "1" && k <= "6") {
+    const i = +k - 1;
+    T = SCENES.slice(0, i).reduce((a,x)=>a+x.t, 0) + 0.01;
+    render(T); syncScrub();
+  } else return;
+  e.preventDefault();
+});
+$("speed").addEventListener("click", ()=>{
+  rate = rate===1 ? 2 : rate===2 ? .5 : 1;
+  $("speed").textContent = rate+"\u00d7";
+});
+
+$("play").textContent = playing ? "Pause" : "Play";
+$("play").setAttribute("aria-pressed", String(playing));
+$("foot").innerHTML = `Every figure is derived from the real <code style="font-family:'IBM Plex Mono',monospace">config.json</code> of
+Qwen2.5-0.5B-Instruct (H=896, 24 layers, 2 KV heads, V=151,936) and from the v0 source, not estimated.
+Byte counts and recompute factors are exact arithmetic. Quality figures come from a 3,072-token perplexity run against an fp32 reference; one cached decode step of the 3-node chain
+measures 123.94 ms (fp32, CPU, 2 threads; 72.9 ms single-process), which is why the byte reductions here are <b>not</b> claimed as wall-clock speedups on a LAN.`;
+
+function frame(ts){
+  if(playing){
+    if(last !== null) T += (ts-last)/1000*rate;
+    last = ts;
+    if(T >= TOTAL) T = 0;
+    render(T); syncScrub();
+  } else last = null;
+  requestAnimationFrame(frame);
+}
+render(T); syncScrub();
+requestAnimationFrame(frame);
+})();
+</script>

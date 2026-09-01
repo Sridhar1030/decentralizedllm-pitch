@@ -1,0 +1,24 @@
+embed/lm_head params : 136,134,656   (27.6% of model)
+per-layer params     : 14,909,440
+total params         : 493,961,216   (published: 494M)
+
+lm_head compute      : 9.13 transformer layers' worth of MACs
+  node0 (embed+L0-7)         8.00 eq   24.1%
+  node1 (L8-15)              8.00 eq   24.1%
+  node2 (L16-23+lm_head)    17.13 eq   51.7%
+  bottleneck stage 17.13 eq vs balanced 11.04 eq -> 1.55x worse than balanced
+  balanced cut: node0=L0-10(11.0) node1=L11-21(11.0) node2=L22-23+lm_head(11.13)
+
+KV bytes/token/layer : 512   all 24 layers: 12,288 B (12 KB)
+KV for 2048 ctx      : 25.2 MB whole model, 8.4 MB per 8-layer shard
+
+position-forwards per node, P=32 G=512:  v0 147,200   v1(KV cache) 543   -> 271x recompute
+
+wire bytes for one 512-token generation:
+  v0 hidden     1406.8 MB   v0 logits     414.9 MB   v0 total    1821.7 MB
+  v1 hidden      1.946 MB   v1 tokens  0.002048 MB   v1 total     1.948 MB
+  reduction  935x
+
+logits payload 607,744 B vs hidden payload seq*3584 B
+  -> full logit vector is the LARGEST payload on the wire until seq_len > 170 tokens
+  -> with a KV cache (hidden = 3584 B) logits are 170x larger than the activation

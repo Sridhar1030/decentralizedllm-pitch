@@ -1,0 +1,77 @@
+selftest OK: 4 two-point fits reproduce all 8 measured round trips exactly; b64+JSON byte counts match T1-A1 (4805, 810346)
+
+### TRANSPORT PARAMETERS  T_POST = A + c*(B_req+B_resp)   (measured, two-point fit)
+transport                         A ms/POST   c ms/MB/crossing
+v0 fresh httpx + b64/JSON             5.546              6.561
+pooled httpx + b64/JSON               0.500              6.552
+fresh httpx + raw binary              5.546              0.400
+pooled httpx + raw binary             0.476              0.400
+framed TCP + zero-copy                0.054              0.125
+
+### LADDER @ seq=512 context, R=1, link = loopback  (T_wire = 0)
+ # step                                            B/token  B/act-hop    T_cmp     T_tr  T_tok ms   tok/s   cum x
+ 0 v0 as written                                10,600,765  2,446,705   712.54    82.97     795.5    1.26   1.00x
+ 1 + KV cache (last position only)                 829,573      4,805   123.94    21.83     145.8    6.86   5.46x
+ 2 + argmax on node2 (return the int)               19,231      4,805   123.94    16.76     140.7    7.11   5.65x
+ 3 + binary frame (DLP 40 B, raw fp32)              14,584      3,624   123.94    16.64     140.6    7.11   5.66x
+ 4 + bf16 on the wire                                7,416      1,832   123.94    16.64     140.6    7.11   5.66x
+ 5 + int8 + 8 fp16 outlier channels                  3,872        946   123.94    16.64     140.6    7.11   5.66x
+ 6 + connection reuse (pooled, then framed TCP)      3,872        946   123.94     0.16     124.1    8.06   6.41x
+
+### CONCURRENCY, from row 6 (D = 124.10 ms, link = loopback)
+  per-stage D_i (modelled apportionment of measured sums): 35.85 / 34.44 / 53.81 ms   D_max = 53.81 (node2)
+  N* = D / D_max = 124.10 / 53.81 = 2.306 -> ceil = 3
+  R=1  X = min(1/124.10, 1/53.81) =   8.06 tok/s   | rebalanced 11/11/2 (D_max = D/3 = 41.37):   8.06 tok/s   TPOT =   124.1 ms
+  R=2  X = min(2/124.10, 1/53.81) =  16.12 tok/s   | rebalanced 11/11/2 (D_max = D/3 = 41.37):  16.12 tok/s   TPOT =   124.1 ms
+  R=3  X = min(3/124.10, 1/53.81) =  18.58 tok/s   | rebalanced 11/11/2 (D_max = D/3 = 41.37):  24.17 tok/s   TPOT =   161.4 ms
+  R=4  X = min(4/124.10, 1/53.81) =  18.58 tok/s   | rebalanced 11/11/2 (D_max = D/3 = 41.37):  24.17 tok/s   TPOT =   215.3 ms
+  R=8  X = min(8/124.10, 1/53.81) =  18.58 tok/s   | rebalanced 11/11/2 (D_max = D/3 = 41.37):  24.17 tok/s   TPOT =   430.5 ms
+
+### LADDER @ seq=512 context, R=1, link = 1GbE  (BW=125 MB/s, RTT=0.3 ms/POST)
+ # step                                            B/token  B/act-hop    T_cmp     T_tr  T_tok ms   tok/s   cum x
+ 0 v0 as written                                10,600,765  2,446,705   712.54   168.68     881.2    1.13   1.00x
+ 1 + KV cache (last position only)                 829,573      4,805   123.94    29.37     153.3    6.52   5.75x
+ 2 + argmax on node2 (return the int)               19,231      4,805   123.94    17.81     141.8    7.05   6.22x
+ 3 + binary frame (DLP 40 B, raw fp32)              14,584      3,624   123.94    17.66     141.6    7.06   6.22x
+ 4 + bf16 on the wire                                7,416      1,832   123.94    17.60     141.5    7.07   6.23x
+ 5 + int8 + 8 fp16 outlier channels                  3,872        946   123.94    17.57     141.5    7.07   6.23x
+ 6 + connection reuse (pooled, then framed TCP)      3,872        946   123.94     1.09     125.0    8.00   7.05x
+
+### LADDER @ seq=512 context, R=1, link = 10GbE  (BW=1250 MB/s, RTT=0.08 ms/POST)
+ # step                                            B/token  B/act-hop    T_cmp     T_tr  T_tok ms   tok/s   cum x
+ 0 v0 as written                                10,600,765  2,446,705   712.54    91.69     804.2    1.24   1.00x
+ 1 + KV cache (last position only)                 829,573      4,805   123.94    22.73     146.7    6.82   5.48x
+ 2 + argmax on node2 (return the int)               19,231      4,805   123.94    17.01     141.0    7.09   5.71x
+ 3 + binary frame (DLP 40 B, raw fp32)              14,584      3,624   123.94    16.90     140.8    7.10   5.71x
+ 4 + bf16 on the wire                                7,416      1,832   123.94    16.89     140.8    7.10   5.71x
+ 5 + int8 + 8 fp16 outlier channels                  3,872        946   123.94    16.88     140.8    7.10   5.71x
+ 6 + connection reuse (pooled, then framed TCP)      3,872        946   123.94     0.41     124.3    8.04   6.47x
+
+### ORDER SENSITIVITY — same 6 changes, cheapest-first, link = loopback
+ # step                                            B/token     T_tr  T_tok ms   tok/s   cum x
+ 0 v0 as written                                10,600,765    82.97     795.5    1.26   1.00x
+ 1 + connection reuse FIRST (pooled httpx)      10,600,765    67.74     780.3    1.28   1.02x
+ 2 + KV cache                                      829,573     6.68     130.6    7.66   6.09x
+ 3 + argmax on node2                                19,231     1.62     125.6    7.96   6.34x
+ 4 + binary frame (raw fp32, framed TCP)            14,584     0.16     124.1    8.06   6.41x
+ 5 + bf16                                            7,416     0.16     124.1    8.06   6.41x
+ 6 + int8 + outliers                                 3,872     0.16     124.1    8.06   6.41x
+
+### ORDER SENSITIVITY — same 6 changes, cheapest-first, link = 1GbE
+ # step                                            B/token     T_tr  T_tok ms   tok/s   cum x
+ 0 v0 as written                                10,600,765   168.68     881.2    1.13   1.00x
+ 1 + connection reuse FIRST (pooled httpx)      10,600,765   153.44     866.0    1.15   1.02x
+ 2 + KV cache                                      829,573    14.22     138.2    7.24   6.38x
+ 3 + argmax on node2                                19,231     2.67     126.6    7.90   6.96x
+ 4 + binary frame (raw fp32, framed TCP)            14,584     1.18     125.1    7.99   7.04x
+ 5 + bf16                                            7,416     1.12     125.1    8.00   7.05x
+ 6 + int8 + outliers                                 3,872     1.09     125.0    8.00   7.05x
+
+### COMPRESSION CROSSOVER — link speed below which a dtype step is worth 10% of T_token
+  criterion: bytes_saved / BW  >  0.10 * T_token   =>   BW < bytes_saved / (0.10*T_token)
+  fp32->bf16  saves  7,168 B/token | CPU decode, measured 123.94 ms     -> pays below     0.58 MB/s =       4.6 Mbit/s
+  fp32->bf16  saves  7,168 B/token | GPU-class runtime, modelled 1.5 ms -> pays below    47.79 MB/s =     382.3 Mbit/s
+  bf16->int8  saves  3,544 B/token | CPU decode, measured 123.94 ms     -> pays below     0.29 MB/s =       2.3 Mbit/s
+  bf16->int8  saves  3,544 B/token | GPU-class runtime, modelled 1.5 ms -> pays below    23.63 MB/s =     189.0 Mbit/s
+  fp32->int8  saves 10,712 B/token | CPU decode, measured 123.94 ms     -> pays below     0.86 MB/s =       6.9 Mbit/s
+  fp32->int8  saves 10,712 B/token | GPU-class runtime, modelled 1.5 ms -> pays below    71.41 MB/s =     571.3 Mbit/s

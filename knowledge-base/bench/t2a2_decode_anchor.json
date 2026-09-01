@@ -1,0 +1,6 @@
+{
+ "decode_step_ms_24layer_min": 72.91,
+ "decode_step_ms_median": 75.51,
+ "per_8layer_shard_ms_min": 24.3,
+ "note": "fp32 CPU, 2 threads, batch 1, KV cache on; lm_head included in the 24-layer number"
+}
