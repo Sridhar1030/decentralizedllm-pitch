@@ -216,6 +216,7 @@ connection and a `ConnectionResetError` mid-frame.
 #!/usr/bin/env bash
 set -euo pipefail
 OUT=$(mktemp)
+# notsecret
 curl -sN -X POST localhost:8080/v1/chat/completions/stream \
   -H 'x-api-key: sridhar-intern-2026' -H 'content-type: application/json' \
   -d '{"model":"qwen","max_tokens":64,"messages":[{"role":"user","content":"Explain pipeline parallelism."}]}' \
@@ -283,7 +284,7 @@ class ChatUser(HttpUser):
     def stream(self):
         t0 = time.perf_counter(); ttft = None; last = t0
         with self.client.post("/v1/chat/completions/stream", json=BODY, stream=True,
-                              headers={"x-api-key": "sridhar-intern-2026"},
+                              headers={"x-api-key": "sridhar-intern-2026"},  # notsecret
                               catch_response=True, name="stream") as r:
             if r.status_code == 429:              # admission reject is a RESULT, not an error
                 events.request.fire(request_type="ADMIT", name="429",
@@ -306,6 +307,7 @@ for N in 1 2 3 4 6 8 12; do   # closed-loop concurrency sweep
   locust -f bench/locustfile.py --host http://localhost:8080 --headless \
          -u $N -r $N -t 3m --csv bench/sweep_n$N; done
 for R in 0.1 0.2 0.3 0.5 1; do   # open-loop admission probe
+  # notsecret
   echo "POST http://localhost:8080/v1/chat/completions" | \
   vegeta attack -header 'X-Api-Key: sridhar-intern-2026' -body bench/body.json \
                 -rate=$R -duration=120s | vegeta report -type='hist[0,2s,5s,10s,20s,60s]'; done

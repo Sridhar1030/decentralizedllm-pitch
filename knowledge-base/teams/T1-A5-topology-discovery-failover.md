@@ -22,7 +22,7 @@ headline: >
 | Failure detection | The failing request itself. `timeout=60` per hop | `coordinator.py:46` |
 | Failover | None. Node down ⇒ model incomplete ⇒ outage | shared-context defect 9 |
 | Auth node↔node | None. Plain HTTP on the `decentralized-net` bridge, no token, no TLS | all |
-| Auth client→gateway | One shared static key `"sridhar-intern-2026"` in source | `gateway/app.py:15` |
+| Auth client→gateway | One shared static key `"sridhar-intern-2026"` in source (notsecret: demo default) | `gateway/app.py:15` |
 
 ### Two live bugs found while reading
 
